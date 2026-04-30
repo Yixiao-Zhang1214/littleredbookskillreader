@@ -41,3 +41,5 @@ npx skills add Yixiao-Zhang1214/littleredbookskillreader --skill xhs-pm-analyzer
 2. 对 AI 助手说：“请帮我分析这个小红书产品经理技能笔记：[您的链接]”。
 3. AI 会自动调用底层的 `xhs_analyzer_pipeline.py` 进行光速审查并输出极具深度的评估报告。
 
+
+
