@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import shutil
 import os
+import zipfile
 from pathlib import Path
 
 # ==========================================
@@ -119,14 +120,46 @@ def process_repo(repo_url):
     temp_dir = tempfile.mkdtemp(prefix="xhs_skill_")
     
     try:
-        # 安全护栏 1: 浅克隆 --depth 1 防止磁盘耗尽
-        print("   -> 正在执行安全克隆 (--depth 1)...")
-        result = subprocess.run(
-            ["git", "clone", "--depth", "1", repo_url, temp_dir],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode != 0:
-            print("   ⚠️ 克隆失败或仓库不存在。")
+        # 提取 owner/repo，支持带结尾 / 的情况
+        parts = [p for p in repo_url.split('/') if p]
+        if len(parts) < 2:
+            print("   ⚠️ 无效的 GitHub 链接格式。")
+            return
+        owner, repo = parts[-2], parts[-1]
+        
+        print(f"   -> 正在通过 HTTPS 下载 ZIP 源码包 (免 Git 授权: {owner}/{repo})...")
+        
+        branches = ['main', 'master']
+        downloaded = False
+        
+        for branch in branches:
+            zip_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip"
+            try:
+                req = urllib.request.Request(zip_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=15) as response:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_zip:
+                        tmp_zip.write(response.read())
+                        tmp_zip_path = tmp_zip.name
+                
+                # 解压到临时目录
+                with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                os.remove(tmp_zip_path)
+                downloaded = True
+                print(f"   ✅ 成功获取源码 (分支: {branch})")
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    continue # 尝试下一个分支
+                else:
+                    print(f"   ⚠️ 下载失败 HTTP {e.code}")
+                    break
+            except Exception as e:
+                print(f"   ⚠️ 下载异常: {e}")
+                break
+                
+        if not downloaded:
+            print("   ⚠️ 获取源码失败：仓库不存在、为私有仓库或网络受限。")
             return
             
         # 安全护栏 2: 纯文本扫描 (禁止执行)
