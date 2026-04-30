@@ -7,10 +7,21 @@ import tempfile
 import shutil
 import os
 import zipfile
+import logging
 from pathlib import Path
 
 # ==========================================
-# 内置安全审查规则 (复用之前的低依赖扫描器)
+# 日志配置
+# ==========================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger("xhs_analyzer")
+
+# ==========================================
+# 内置安全审查规则
 # ==========================================
 SECURITY_RULES = {
     "RCE_RISK": {
@@ -36,65 +47,83 @@ SECURITY_RULES = {
 }
 
 # ==========================================
-# 1. 帖子读取与提取模块 (零外部依赖)
+# 工具函数
 # ==========================================
-def fetch_xhs_content(url):
-    print(f"🔄 正在尝试读取小红书链接: {url}")
-    # 使用基础的 User-Agent 模拟浏览器，避免被直接 403
-    req = urllib.request.Request(url, headers={
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    })
-    
-    try:
-        html = urllib.request.urlopen(req, timeout=10).read().decode('utf-8')
-        
-        # 拦截视频判定
-        if 'video' in url or '"type":"video"' in html:
-            print("❌ 拦截：该链接包含视频内容，MVP版本仅支持图文。")
-            return None
-            
-        # 尝试从 window.__INITIAL_STATE__ 中提取文本
-        match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*?});</script>', html)
-        text_content = html # 默认 fallback 为整个 html
-        if match:
-            try:
-                state = json.loads(match.group(1))
-                # 简化提取逻辑，直接将 state 序列化为字符串进行后续正则匹配
-                text_content = json.dumps(state, ensure_ascii=False)
-                print("✅ 成功提取小红书底层数据状态。")
-            except json.JSONDecodeError:
-                pass
-        return text_content
-    except Exception as e:
-        print(f"⚠️ 读取小红书页面失败 (可能触发反爬): {e}")
-        print("💡 提示：在实际 Trae 环境中，可直接让 AI 助手通过自带工具或 OCR 提取文本传入。")
-        return None
-
 def extract_github_links(text):
-    print("🔍 正在从文本中提取 Skill (GitHub) 链接...")
+    """从文本中提取 GitHub 链接，统一接口格式"""
+    logger.info("🔍 正在从输入文本中提取 GitHub 链接...")
     repos = set()
-    # 匹配 https://github.com/foo/bar
-    for match in re.findall(r'github\.com/([\w-]+/[\w-]+)', text):
-        repos.add(f"https://github.com/{match}")
-    # 匹配 npx skills add foo/bar 这种常见的 skill 安装命令
-    for match in re.findall(r'npx\s+skills\s+add\s+([\w-]+/[\w-]+)', text):
-        repos.add(f"https://github.com/{match}")
-        
+    for match in re.findall(r'github\.com/([\w.-]+/[\w.-]+)', text):
+        repos.add(f"https://github.com/{match.strip('/')}")
+    for match in re.findall(r'npx\s+skills\s+add\s+([\w.-]+/[\w.-]+)', text):
+        repos.add(f"https://github.com/{match.strip('/')}")
     return list(repos)
 
+def clone_with_fallback(repo_url, target_dir):
+    """渐进式获取源码：1. ZIP (免授权) -> 2. Git Clone (依赖环境授权)"""
+    parts = [p for p in repo_url.split('/') if p]
+    if len(parts) < 2:
+        logger.error(f"无效的 GitHub 链接格式: {repo_url}")
+        return False
+        
+    owner, repo = parts[-2], parts[-1]
+    
+    # 策略 1: 尝试匿名 ZIP 下载
+    logger.info(f"策略 1: 尝试免授权 ZIP 下载 ({owner}/{repo})...")
+    branches = ['main', 'master']
+    for branch in branches:
+        zip_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip"
+        try:
+            req = urllib.request.Request(zip_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_zip:
+                    tmp_zip.write(response.read())
+                    tmp_zip_path = tmp_zip.name
+            
+            with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(target_dir)
+            os.remove(tmp_zip_path)
+            logger.info(f"✅ ZIP 下载成功 (分支: {branch})")
+            return True
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                logger.warning(f"ZIP 下载 HTTP 异常: {e.code}")
+        except Exception as e:
+            logger.warning(f"ZIP 下载异常: {e}")
+
+    # 策略 2: 降级使用 Git Clone
+    logger.info("策略 2: ZIP 获取失败，降级尝试 Git Clone (需本地授权)...")
+    try:
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", repo_url, target_dir],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode == 0:
+            logger.info("✅ Git Clone 成功")
+            return True
+        else:
+            logger.error(f"Git Clone 失败: {result.stderr.strip()}")
+    except subprocess.TimeoutExpired:
+        logger.error("Git Clone 超时")
+    except FileNotFoundError:
+        logger.error("未找到 Git 命令，无法克隆")
+
+    return False
+
 # ==========================================
-# 2. 安全克隆与扫描模块 (核心安全护栏)
+# 核心扫描引擎
 # ==========================================
 def scan_directory(target_dir):
+    """纯文本静态扫描，绝不执行任何代码"""
     findings = []
     score = 100
-    # 移除 .md 和 .json 等文档配置文件的扫描，避免说明文档中的 curl/wget 被误报为高危操作
     supported_exts = {'.py', '.js', '.ts', '.sh'}
+    ignore_dirs = {'.git', 'tests', 'test', 'examples', 'docs', 'node_modules'}
     
-    for root, _, files in os.walk(target_dir):
-        # 过滤掉 .git 目录、测试目录、示例目录等，减少合理调用的误报
-        if any(ignore in root for ignore in ['.git', 'tests', 'test', 'examples', 'docs']):
-            continue
+    for root, dirs, files in os.walk(target_dir):
+        # 原地修改 dirs 以跳过忽略的目录
+        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+        
         for file in files:
             file_path = Path(root) / file
             if file_path.suffix in supported_exts:
@@ -110,106 +139,58 @@ def scan_directory(target_dir):
                                     "risk": rule["desc"]
                                 })
                                 score -= rule["penalty"]
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"跳过无法读取的文件 {file_path}: {e}")
+                    
     return max(0, score), findings
 
 def process_repo(repo_url):
-    print(f"\n📦 开始处理仓库: {repo_url}")
-    # 强制安全护栏：创建临时目录
+    """端到端处理单个仓库：拉取 -> 扫描 -> 销毁"""
+    print(f"\n" + "="*50)
+    logger.info(f"📦 开始处理仓库: {repo_url}")
     temp_dir = tempfile.mkdtemp(prefix="xhs_skill_")
     
     try:
-        # 提取 owner/repo，支持带结尾 / 的情况
-        parts = [p for p in repo_url.split('/') if p]
-        if len(parts) < 2:
-            print("   ⚠️ 无效的 GitHub 链接格式。")
-            return
-        owner, repo = parts[-2], parts[-1]
-        
-        print(f"   -> 正在通过 HTTPS 下载 ZIP 源码包 (免 Git 授权: {owner}/{repo})...")
-        
-        branches = ['main', 'master']
-        downloaded = False
-        
-        for branch in branches:
-            zip_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip"
-            try:
-                req = urllib.request.Request(zip_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=15) as response:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_zip:
-                        tmp_zip.write(response.read())
-                        tmp_zip_path = tmp_zip.name
-                
-                # 解压到临时目录
-                with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_dir)
-                os.remove(tmp_zip_path)
-                downloaded = True
-                print(f"   ✅ 成功获取源码 (分支: {branch})")
-                break
-            except urllib.error.HTTPError as e:
-                if e.code == 404:
-                    continue # 尝试下一个分支
-                else:
-                    print(f"   ⚠️ 下载失败 HTTP {e.code}")
-                    break
-            except Exception as e:
-                print(f"   ⚠️ 下载异常: {e}")
-                break
-                
-        if not downloaded:
-            print("   ⚠️ 获取源码失败：仓库不存在、为私有仓库或网络受限。")
+        success = clone_with_fallback(repo_url, temp_dir)
+        if not success:
+            print("   ⚠️ 获取源码失败，无法进行自动化扫描。请降级为纯文本人工浅层评估。")
             return
             
-        # 安全护栏 2: 纯文本扫描 (禁止执行)
-        print("   -> 正在进行静态代码安全扫描...")
+        logger.info("进行静态代码安全扫描...")
         score, findings = scan_directory(temp_dir)
         
-        # 打印简易报告
         risk_level = "🟢 低风险" if score >= 80 else "🟡 中风险" if score >= 60 else "🔴 高风险"
-        print(f"   => 扫描得分: {score}/100 ({risk_level})")
+        print(f"   => 最终安全得分: {score}/100 ({risk_level})")
+        
         if findings:
             print("   => 发现以下风险点:")
-            for f in findings[:3]: # 只显示前 3 个
+            for f in findings[:5]: # 最多展示 5 个
                 print(f"      - {f['file']}:{f['line']} -> {f['risk']}")
-            if len(findings) > 3:
-                print(f"      - ... 以及其他 {len(findings) - 3} 个风险点。")
+            if len(findings) > 5:
+                print(f"      - ... 以及其他 {len(findings) - 5} 个风险点。")
         else:
-            print("   => 未发现明显的硬编码高危漏洞。")
+            print("   => 扫描通过：未发现明显的硬编码高危漏洞。")
             
     finally:
-        # 安全护栏 3: 强制清理，销毁现场
-        print(f"   🧹 扫描结束，强制销毁临时目录: {temp_dir}")
+        logger.info(f"🧹 强制清理临时目录: {temp_dir}")
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 # ==========================================
-# 主流水线
+# 主入口
 # ==========================================
 def main():
     if len(sys.argv) < 2:
-        print("用法: python xhs_analyzer_pipeline.py <小红书链接或文本内容>")
+        print("用法: python xhs_analyzer_pipeline.py \"包含 GitHub 链接的文本\"")
         sys.exit(1)
         
-    input_data = sys.argv[1]
+    input_text = sys.argv[1]
+    repos = extract_github_links(input_text)
     
-    if input_data.startswith("http"):
-        text = fetch_xhs_content(input_data)
-        if not text:
-            print("未能提取有效内容，流程终止。")
-            sys.exit(1)
-    else:
-        text = input_data # 支持直接传入提取好的文本
-        
-    repos = extract_github_links(text)
     if not repos:
-        print("❌ 在提供的内容中未发现有效的 GitHub Skill 链接。")
+        logger.warning("❌ 在输入中未发现有效的 GitHub 链接。")
         sys.exit(0)
         
-    print(f"\n✅ 提取到 {len(repos)} 个潜在的 Skill 仓库:")
-    for repo in repos:
-        print(f"  - {repo}")
-        
+    logger.info(f"✅ 提取到 {len(repos)} 个仓库链接待扫描")
     for repo in repos:
         process_repo(repo)
 
