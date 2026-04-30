@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "xhs-pm-analyzer": {
+      "source": "Yixiao-Zhang1214/littleredbookskillreader",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "05ee20bad894ddaba62a58aa766dcfa692c0936f37da030ed42ae1b0b2b2da0f"
+    }
+  }
+}

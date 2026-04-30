@@ -45,9 +45,9 @@ agent-reach configure xhs-cookies "您的 Cookie 字符串"
 我们提供了一键安装脚本，您只需在 Trae 终端中运行以下命令即可将本 Skill 安装到您的 Trae 工作区中：
 
 ```bash
-npx skills add Yixiao-Zhang1214/littleredbookskillreader --skill xhs-pm-analyzer
+npx skills add Yixiao-Zhang1214/littleredbookskillreader --skill xhs-pm-analyzer -a trae -y
 ```
-*(注：运行此命令后，Trae 会提示您选择安装到全局或当前项目。)*
+*(注：添加了 `-a trae -y` 参数，表示默认仅静默安装到 Trae 平台，跳过其他 Agent 平台的选择提示。)*
 
 ### 使用步骤：
 1. 安装完成后，在 Trae 的对话框中，唤起本 Skill（或直接发送以下话术触发）。
