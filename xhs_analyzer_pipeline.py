@@ -184,10 +184,23 @@ def main():
         sys.exit(1)
         
     input_text = sys.argv[1]
+    
+    # 防止直接把小红书链接传给脚本（图像读取由大模型在外部原生完成）
+    if "xiaohongshu.com" in input_text and "github.com" not in input_text:
+        logger.error("❌ 流程错误：请勿直接将小红书链接传给扫描脚本！")
+        print("\n⚠️ 脚本设计原则（反向控制）：")
+        print("1. 你（大模型）必须利用自身的「原生多模态视觉能力」直接读取图文链接。")
+        print("2. 绝对不允许把图片下载到本地。如果看不清，可以考虑在环境中安装 OCR 依赖。")
+        print("3. 你必须先自己提炼出 GitHub 链接后，再将『纯文本』或『GitHub 链接』传给本扫描脚本。")
+        sys.exit(1)
+        
     repos = extract_github_links(input_text)
     
     if not repos:
-        logger.warning("❌ 在输入中未发现有效的 GitHub 链接。")
+        logger.warning("❌ [ANTI-HALLUCINATION GUARD] 在输入中未发现有效的 GitHub 链接！")
+        print("\n⚠️ 严格警告：请勿凭空捏造 Skill！")
+        print("未在用户提供的笔记原文/图片中提取到明确的代码仓链接。")
+        print("根据防幻觉协议，必须直接向用户回复：“未在这篇笔记中提取到明确的 Skill 安装信息”，绝不允许自行猜测。")
         sys.exit(0)
         
     logger.info(f"✅ 提取到 {len(repos)} 个仓库链接待扫描")
