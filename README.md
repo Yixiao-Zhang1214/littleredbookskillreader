@@ -65,8 +65,9 @@ unzip -o xhs_pm_skill_delivery.zip -d .trae/skills/xhs-pm-analyzer
 
 ### 使用步骤：
 1. 安装完成后，在 Trae 的对话框中，唤起本 Skill（或直接发送以下话术触发）。
-2. 对 AI 助手说：“请帮我分析这个小红书产品经理技能笔记：[您的链接]”。
-3. AI 会自动调用底层的 `xhs_analyzer_pipeline.py` 进行光速审查并输出极具深度的评估报告。
+2. 对 AI 助手说：
+   > “请帮我分析这个小红书产品经理技能笔记：[您的链接]。**⚠️注意：请严格按照 Skill 规定的输出模板回复，不要输出任何额外的寒暄或思考过程。**”
+3. AI 会自动调用底层的 `xhs_analyzer_pipeline.py` 进行光速审查并严格输出极具深度的评估报告。
 
 
 
