@@ -40,84 +40,20 @@ agent-reach configure xhs-cookies "您的 Cookie 字符串"
 - **广义产品定义与个性化需求打分**：打破传统“画原型写PRD”的职业刻板印象，将数据分析、前端审美、架构设计等均纳入高分范畴。同时支持接收用户的具体痛点（如“我是数据PM，需要做漏斗”），进行 0-100 分的精准需求匹配度量化打分。
 - **用户绝对控制权**：Skill 仅输出分析报告与安装建议（✅ 已适配 / ⚠️ 有风险 / ❌ 不匹配），绝不在未经允许的情况下自动替用户运行安装命令。
 
-## 五、安装方式一：通过压缩包本地安装（强烈推荐！🚀）
+## 五、在 Trae 中一键安装与使用指南
 
-如果您已经下载了 `xhs_pm_skill_delivery.zip` 压缩包，这是最快、最稳定的安装方式，无需访问 GitHub！
-
-### 为什么推荐压缩包安装？
-- ✅ **速度快** - 无需网络，秒级安装
-- ✅ **稳定可靠** - 不依赖 GitHub 访问
-- ✅ **离线可用** - 没有网络也能安装使用
-- ✅ **体积小** - 仅 39.9 KB
-
----
-
-### 📦 完整安装步骤
-
-#### macOS/Linux 用户：
-
-1. **解压压缩包**
-   ```bash
-   unzip xhs_pm_skill_delivery.zip
-   ```
-
-2. **进入目录**
-   ```bash
-   cd xhs_pm_skill_delivery
-   ```
-
-3. **运行安装脚本** - 脚本会自动把 Skill 安装到 Trae
-   ```bash
-   chmod +x install.sh
-   ./install.sh
-   ```
-
-4. **完成！** 在 Trae 中刷新技能列表即可使用
-
----
-
-#### Windows 用户：
-
-1. **解压压缩包** - 使用解压工具解压 `xhs_pm_skill_delivery.zip`
-
-2. **运行安装脚本** - 双击 `install.bat`
-
-3. **完成！** 在 Trae 中刷新技能列表即可使用
-
----
-
-### 🛠️ 手动运行安全扫描
-
-如果需要单独运行安全扫描脚本分析 GitHub 仓库：
-
-- **macOS/Linux**:
-  ```bash
-  ./run.sh "github.com/user/repo"
-  ```
-
-- **Windows**:
-  ```cmd
-  run.bat "github.com/user/repo"
-  ```
-
----
-
-### 📝 安装脚本包含的功能
-
-- ✅ 自动检测 Python 环境
-- ✅ 自动查找 Trae 技能目录
-- ✅ 自动复制所有必要文件
-- ✅ 无需任何用户输入，全自动安装
-- ✅ 提供清晰的使用说明
-
-## 六、安装方式二：在 Trae 中一键安装
-
-我们也提供了一键安装脚本，您只需在 Trae 终端中运行以下命令即可将本 Skill 安装到您的 Trae 工作区中：
+我们提供了一键安装脚本，您只需在 Trae 终端中运行以下命令即可将本 Skill 安装到您的 Trae 工作区中：
 
 ```bash
 npx skills add Yixiao-Zhang1214/littleredbookskillreader --skill xhs-pm-analyzer -a trae -y
 ```
 *(注：添加了 `-a trae -y` 参数，表示默认仅静默安装到 Trae 平台，跳过其他 Agent 平台的选择提示。)*
+
+### 离线/压缩包安装方式：
+如果您下载了本项目的压缩包或克隆了本代码库，也可以在当前目录下直接运行以下命令进行本地安装：
+```bash
+npx skills add . --skill xhs-pm-analyzer -a trae -y
+```
 
 ### 使用步骤：
 1. 安装完成后，在 Trae 的对话框中，唤起本 Skill（或直接发送以下话术触发）。
