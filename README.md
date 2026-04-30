@@ -50,10 +50,18 @@ npx skills add Yixiao-Zhang1214/littleredbookskillreader --skill xhs-pm-analyzer
 *(注：添加了 `-a trae -y` 参数，表示默认仅静默安装到 Trae 平台，跳过其他 Agent 平台的选择提示。)*
 
 ### 离线/压缩包安装方式：
-如果您下载了本项目的压缩包或克隆了本代码库，也可以在当前目录下直接运行以下命令进行本地安装：
+由于 `npx skills` 的本地目录解析机制偶尔会导致循环引用报错，**最推荐且绝对不会出错的本地安装方式是：直接将压缩包解压到 Trae 的技能目录中。**
+
+请在您的 Trae 终端中运行以下命令（假设您将压缩包放在了当前项目根目录）：
+
 ```bash
-npx skills add . --skill xhs-pm-analyzer -a trae -y
+# 1. 确保技能目录存在
+mkdir -p .trae/skills/xhs-pm-analyzer
+
+# 2. 将压缩包直接解压到该目录
+unzip -o xhs_pm_skill_delivery.zip -d .trae/skills/xhs-pm-analyzer
 ```
+*解压完成后，直接在 Trae 左侧边栏刷新或重启一下，技能就会出现在右侧聊天框的 ⚡ 菜单里了！*
 
 ### 使用步骤：
 1. 安装完成后，在 Trae 的对话框中，唤起本 Skill（或直接发送以下话术触发）。
